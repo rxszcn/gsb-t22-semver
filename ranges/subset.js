@@ -74,7 +74,11 @@ const minimumVersionWithPreRelease = [new Comparator('>=0.0.0-0')]
 const minimumVersion = [new Comparator('>=0.0.0')]
 
 const simpleSubset = (sub, dom, options) => {
-  if (sub === dom) {
+  // comparator lists are rebuilt per Range instance, so two ranges parsed
+  // from the same string no longer share an array; compare the normalized
+  // comparator values instead of relying on array identity.
+  if (sub.length === dom.length &&
+      sub.every((c, i) => c.value === dom[i].value)) {
     return true
   }
 

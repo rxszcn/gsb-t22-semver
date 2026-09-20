@@ -109,7 +109,12 @@ class Range {
     const memoKey = memoOpts + ':' + range
     const cached = cache.get(memoKey)
     if (cached) {
-      return cached
+      // the cache only holds an immutable description of the parse
+      // result (normalized comparator strings).  each Range instance
+      // rebuilds its own Comparator objects from it, so that neither
+      // the comparator graph nor this instance's options are ever
+      // shared with (or corrupted by) another instance.
+      return cached.map(comp => new Comparator(comp, this.options))
     }
 
     const loose = this.options.loose
@@ -166,7 +171,7 @@ class Range {
     }
 
     const result = [...rangeMap.values()]
-    cache.set(memoKey, result)
+    cache.set(memoKey, Object.freeze(result.map(comp => comp.value)))
     return result
   }
 

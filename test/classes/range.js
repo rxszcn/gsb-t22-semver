@@ -3,6 +3,7 @@
 const { test } = require('tap')
 const Range = require('../../classes/range')
 const Comparator = require('../../classes/comparator')
+const SemVer = require('../../classes/semver')
 const rangeIntersection = require('../fixtures/range-intersection.js')
 
 const rangeInclude = require('../fixtures/range-include.js')
@@ -118,11 +119,16 @@ test('missing range parameter in range intersect', (t) => {
 })
 
 test('cache', (t) => {
-  const cached = Symbol('cached')
   const r1 = new Range('1.0.0')
-  r1.set[0][cached] = true
   const r2 = new Range('1.0.0')
-  t.equal(r1.set[0][cached], true)
-  t.equal(r2.set[0][cached], true) // Will be true, showing it's cached.
+  // the parse cache stores an immutable description, not the live
+  // comparator graph, so each instance gets its own comparators and
+  // mutating one cannot pollute another instance built from the
+  // same range string.
+  t.not(r1.set[0], r2.set[0], 'comparator lists are not shared')
+  t.not(r1.set[0][0], r2.set[0][0], 'comparators are not shared')
+  r1.set[0][0].semver = new SemVer('9.9.9')
+  t.equal(r2.set[0][0].semver.version, '1.0.0',
+    'mutating one instance does not pollute another')
   t.end()
 })
