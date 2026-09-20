@@ -103,13 +103,20 @@ class Range {
 
     // memoize range parsing for performance.
     // this is a very hot path, and fully deterministic.
+    // the cache stores immutable descriptors, never comparator or semver
+    // objects: those are part of each Range instance's public, mutable
+    // object graph, and also carry that instance's options.  sharing them
+    // would let one instance (or its consumers) mutate every other
+    // instance built from the same string, and would leak the first
+    // builder's options into later ones.  each instance rebuilds its own
+    // comparators from the descriptor, which skips all the regex parsing.
     const memoOpts =
       (this.options.includePrerelease && FLAG_INCLUDE_PRERELEASE) |
       (this.options.loose && FLAG_LOOSE)
     const memoKey = memoOpts + ':' + range
     const cached = cache.get(memoKey)
     if (cached) {
-      return cached
+      return cached.map(desc => comparatorFromCache(desc, this.options))
     }
 
     const loose = this.options.loose
@@ -166,7 +173,7 @@ class Range {
     }
 
     const result = [...rangeMap.values()]
-    cache.set(memoKey, result)
+    cache.set(memoKey, Object.freeze(result.map(comparatorToCache)))
     return result
   }
 
@@ -239,6 +246,55 @@ const BUILDSTRIPRE = new RegExp(src[t.BUILD], 'g')
 
 const isNullSet = c => c.value === '<0.0.0-0'
 const isAny = c => c.value === ''
+
+// freeze a plain-data snapshot of a comparator for the parse cache.
+// the descriptor fields mirror what the Comparator and SemVer
+// constructors set, so instances can be rebuilt without re-parsing.
+const comparatorToCache = (comp) => Object.freeze({
+  operator: comp.operator,
+  value: comp.value,
+  semver: comp.semver === Comparator.ANY ? null : Object.freeze({
+    raw: comp.semver.raw,
+    version: comp.semver.version,
+    major: comp.semver.major,
+    minor: comp.semver.minor,
+    patch: comp.semver.patch,
+    prerelease: Object.freeze(comp.semver.prerelease.slice()),
+    build: Object.freeze(comp.semver.build.slice()),
+  }),
+})
+
+// rebuild a fresh comparator (and its semver) from a cached descriptor.
+// each Range instance gets its own objects, carrying its own options, so
+// nothing mutable is shared between instances.  the SemVer is rebuilt
+// the same way Comparator#parse builds it: with the loose flag only.
+const comparatorFromCache = (desc, options) => {
+  const comp = Object.create(Comparator.prototype)
+  comp.options = options
+  comp.loose = !!options.loose
+  comp.operator = desc.operator
+  comp.value = desc.value
+  comp.semver = desc.semver === null ? Comparator.ANY : semverFromCache(desc.semver, comp.loose)
+  return comp
+}
+
+const semverFromCache = (desc, loose) => {
+  const semver = Object.create(SemVer.prototype)
+  semver.options = parseOptions(loose)
+  semver.loose = !!loose
+  semver.includePrerelease = false
+  semver.raw = desc.raw
+  semver.version = desc.version
+  semver.major = desc.major
+  semver.minor = desc.minor
+  semver.patch = desc.patch
+  // the descriptor's identifier arrays are frozen, so they can be shared
+  // safely: any attempt to mutate them throws instead of silently
+  // polluting every other instance built from the same range string.
+  semver.prerelease = desc.prerelease
+  semver.build = desc.build
+  return semver
+}
 
 // take a set of comparators and determine whether there
 // exists a version which can satisfy it

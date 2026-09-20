@@ -73,8 +73,15 @@ const subset = (sub, dom, options = {}) => {
 const minimumVersionWithPreRelease = [new Comparator('>=0.0.0-0')]
 const minimumVersion = [new Comparator('>=0.0.0')]
 
+const sameComparators = (a, b) =>
+  a.length === b.length && a.every((c, i) => c.value === b[i].value)
+
 const simpleSubset = (sub, dom, options) => {
-  if (sub === dom) {
+  // Two simple ranges with the same comparators are trivially subsets of
+  // each other.  Compare by comparator value rather than array identity:
+  // range parsing is cached, but each Range instance gets its own
+  // comparator objects, so identical ranges no longer share arrays.
+  if (sub === dom || sameComparators(sub, dom)) {
     return true
   }
 

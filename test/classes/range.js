@@ -3,6 +3,7 @@
 const { test } = require('tap')
 const Range = require('../../classes/range')
 const Comparator = require('../../classes/comparator')
+const SemVer = require('../../classes/semver')
 const rangeIntersection = require('../fixtures/range-intersection.js')
 
 const rangeInclude = require('../fixtures/range-include.js')
@@ -118,11 +119,17 @@ test('missing range parameter in range intersect', (t) => {
 })
 
 test('cache', (t) => {
-  const cached = Symbol('cached')
   const r1 = new Range('1.0.0')
-  r1.set[0][cached] = true
   const r2 = new Range('1.0.0')
-  t.equal(r1.set[0][cached], true)
-  t.equal(r2.set[0][cached], true) // Will be true, showing it's cached.
+  // parsing is still memoized: both instances get equivalent comparators
+  t.equal(r2.set[0][0].value, r1.set[0][0].value)
+  // but the cache no longer hands out shared mutable objects, so
+  // mutating one instance cannot pollute another built from the same
+  // string.
+  t.not(r1.set[0], r2.set[0])
+  t.not(r1.set[0][0], r2.set[0][0])
+  r1.set[0][0].semver = new SemVer('9.9.9')
+  t.equal(r2.test('1.0.0'), true)
+  t.equal(r2.test('9.9.9'), false)
   t.end()
 })
